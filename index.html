@@ -6216,7 +6216,7 @@ function holdFire(btn){
   const br=btn.getBoundingClientRect(); rayBurst(br.left+br.width/2, br.top+br.height/2, 54);
   try{ if(navigator.vibrate) navigator.vibrate([20,40,30]); }catch(e){}
   const act = btn.dataset.hold; hold=null;
-  setTimeout(()=>{ if(act==='lock') sceneWipe(()=>{ S.phase='shop'; dealPacks(); render(); }); else if(act==='next'){ hideNextDock(); goNext(); }
+  setTimeout(()=>{ if(act==='lock') sceneWipe(()=>{ if(S.keep) keepCommit(); S.phase='shop'; dealPacks(); render(); }); else if(act==='next'){ hideNextDock(); goNext(); }
     else if(act==='hire' && S.shop && S.shop.sel){ const [v,j]=S.shop.sel.split('-'); hireOffer(v,j); } }, REDUCED?0:260);
 }
 document.addEventListener('pointerdown', e => { const b=e.target.closest('.holdbtn'); if(b){ e.preventDefault(); holdStart(b); } });
@@ -6449,6 +6449,7 @@ function animateOpts(){
 
 /* scoring: the result is decided up front, payouts settle after the reveal (players can be sold back mid-reveal) */
 function scoreRun(){
+  if(S.keep) keepCommit();   // every way into the reveal signs the lineup's free agents (safe to call twice)
   const rows = evalRows(S.picks, S.target); rows.forEach(r=>r.sold=false);
   const full = rows.reduce((a,x)=>a+x.t,0);
   const best = Math.max(full, bestWithStaff());
