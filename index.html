@@ -1910,6 +1910,9 @@ canvas.pleak.over{z-index:6 !important}
 #phelp.faq .phdone,#phelp.faq .phname,#phelp.faq .phacts{display:none}
 .phbtns{display:flex; gap:8px}
 @media (prefers-reduced-motion: reduce){ .phmark,.phcard{animation:none} .phring{transition:none} }
+.keeprow{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px;min-height:30px}.keeprow small{font-size:12px;opacity:.8;text-align:left;line-height:1.25}.keeprow>span{display:flex;gap:6px;flex:none}
+.kbtn{padding:6px 10px!important;font-size:11px!important;min-height:0!important;white-space:nowrap}.keepmsg{margin-top:6px;font-size:12.5px;font-weight:700;color:var(--gold,#ffd166);text-align:left}
+.cost.own{font-size:11px;letter-spacing:.06em;opacity:.85}.keepsel{margin-bottom:10px}.keepsel .seg button small{display:block;font-size:10px;font-weight:600;opacity:.75;letter-spacing:.02em;text-transform:none}
 </style>
 </head>
 <body>
@@ -2010,10 +2013,10 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>'
 const f1 = n => (Math.round(n*10)/10).toLocaleString('en-US',{minimumFractionDigits:1, maximumFractionDigits:1});
 const f2 = n => n.toFixed(2)+'x';
 const lastName = n => { if(/ Defense$/.test(n)) return n; const p=n.split(' '); return p.length>1 ? p.slice(1).join(' ') : n; };
-const matchup = o => esc(o.t)+(o.home?' vs ':' at ')+esc(o.o);
+const matchup = o => (o.ssn?'’'+String(o.ssn).slice(2)+' ':'')+esc(o.t)+(o.out?(o.out==='BYE'?' · bye week':' · out'):(o.home?' vs ':' at ')+esc(o.o));
 
 /* settings */
-const DEFAULTS = {fmt:'flash', reg:1, po:1, salaries:true, budget:null, staff:'stack', cap:3, scoring:'ppr', defOn:false, sound:true, roster:Object.assign({},PRESETS.classic.r)};
+const DEFAULTS = {keep:true, fmt:'flash', reg:1, po:1, salaries:true, budget:null, staff:'stack', cap:3, scoring:'ppr', defOn:false, sound:true, roster:Object.assign({},PRESETS.classic.r)};
 const DEF = ['DST','DL','LB','CB','S'], OFF = ['QB','RB','WR','TE','FLEX','K'];
 const settings = Object.assign({}, DEFAULTS, load('settings3', {}));
 settings.roster = Object.assign({QB:0,RB:0,WR:0,TE:0,FLEX:0,K:0,DST:0,DL:0,LB:0,CB:0,S:0}, settings.roster);
@@ -2022,18 +2025,19 @@ function saveSettings(){ save('settings3', settings); }
 function rosterSlots(r){ const out=[]; SLOT_ORDER.forEach(p => { for(let i=0;i<(r[p]||0);i++) out.push(p); }); return out; }
 function slotsOf(cfg){ return rosterSlots(cfg.roster).filter(p => cfg.defOn || !DEF.includes(p)); }
 function effRoster(cfg){ const r={}; SLOT_ORDER.forEach(p=>{ r[p] = (!cfg.defOn && DEF.includes(p)) ? 0 : (cfg.roster[p]||0); }); return r; }
-function fmtCounts(cfg){ if(cfg.fmt==='custom') return {reg:cfg.reg, po:cfg.po}; const f=FORMATS[cfg.fmt]; return {reg:f.reg, po:f.po}; }
+function fmtCounts(cfg){ if(cfg.fmt==='custom') return {reg:cfg.reg, po:cfg.po}; if(cfg.keep && cfg.fmt==='flash') return {reg:6, po:2};   // a roster needs a season: Flash becomes 6 games + 2 playoff games
+  const f=FORMATS[cfg.fmt]; return {reg:f.reg, po:f.po}; }
 function autoBudget(n){ return Math.round(3.2*n); }
 function budgetFor(cfg){ return cfg.budget!=null ? cfg.budget : autoBudget(slotsOf(cfg).length); }
 function presetOfCfg(cfg){ return presetOf(effRoster(cfg)); }
 function presetOf(r){ for(const k in PRESETS){ const p=PRESETS[k].r; if(SLOT_ORDER.every(x=>(p[x]||0)===(r[x]||0))) return k; } return null; }
 function configKey(cfg){
   const fc=fmtCounts(cfg);
-  return [cfg.fmt==='custom'?'c'+fc.reg+'-'+fc.po:cfg.fmt, cfg.salaries?'sal':'nosal', cfg.staff==='cap'?'cap'+cfg.cap:'stack', presetOfCfg(cfg)||'r'+slotsOf(cfg).join('')].join('|');
+  return [cfg.fmt==='custom'?'c'+fc.reg+'-'+fc.po:cfg.fmt, cfg.salaries?'sal':'nosal', cfg.staff==='cap'?'cap'+cfg.cap:'stack', presetOfCfg(cfg)||'r'+slotsOf(cfg).join('')].join('|')+(cfg.keep?'|keep':'');
 }
 function configLabel(cfg){
   const fc=fmtCounts(cfg), p=presetOfCfg(cfg);
-  return (cfg.fmt==='custom'?'Custom '+fc.reg+'+'+fc.po:FORMATS[cfg.fmt].name)+' · '+(cfg.salaries?'Salaries':'No salaries')+' · '+(cfg.staff==='cap'?'Cap '+cfg.cap:'Stack')+' · '+(p?PRESETS[p].name:slotsOf(cfg).length+'-man roster');
+  return (cfg.keep?'Roster · ':'')+(cfg.fmt==='custom'?'Custom '+fc.reg+'+'+fc.po:(cfg.keep&&cfg.fmt==='flash')?'6+2':FORMATS[cfg.fmt].name)+' · '+(cfg.salaries?'Salaries':'No salaries')+' · '+(cfg.staff==='cap'?'Cap '+cfg.cap:'Stack')+' · '+(p?PRESETS[p].name:slotsOf(cfg).length+'-man roster');
 }
 
 /* coaches */
@@ -2096,7 +2100,7 @@ function groupFlex(pool, kR, kW, kT, kF, val, cost, B){
 }
 function solve(slotIdxs, val, budget, excluded){
   const B = isFinite(budget) ? Math.max(0,Math.floor(budget)) : 0;
-  const cost = isFinite(budget) ? (o=>o.cost) : (()=>0);
+  const cost = isFinite(budget) ? feeOf : (()=>0);
   const ok = o => !excluded || !excluded.has(o.id);
   let acc = new Array(B+1).fill(NEG); acc[0]=0;
   if(S.mode5){
@@ -2113,7 +2117,7 @@ function solve(slotIdxs, val, budget, excluded){
   }
   const best = Math.max(...acc); return best<=NEG/2 ? null : best;
 }
-function minFill(slotIdxs, excluded){ const v = solve(slotIdxs, o=>-o.cost, Infinity, excluded); return v==null ? Infinity : -v; }
+function minFill(slotIdxs, excluded){ const v = solve(slotIdxs, o=>-feeOf(o), Infinity, excluded); return v==null ? Infinity : -v; }
 
 /* ---------- state ---------- */
 let S = null;
@@ -2132,6 +2136,8 @@ function newRun(seed){
         salaries:settings.salaries, budget:budgetFor(settings), staff:settings.staff, cap:settings.cap, scoring:settings.scoring,
         slotList:slotsOf(settings), round:0, wins:0, losses:0, regWins:0, coaches:[], bank:0, coins:0,
         pearlsRun:0, history:[], awardsRun:[], meta:{}, rrUsed:{reg:0,po:0,sb:0}, rrPaid:0, packsBought:0, shop:null };
+  S.keep = !!settings.keep && !TUT;
+  if(S.keep){ S.salaries=true; S.bank=KEEP.start; S.roster=[]; S.expired=[]; S.slotBase=S.slotList.slice(); S.keepGrow = presetOfCfg(settings)==='classic' ? ['RB','WR'] : null; }
   S.nSlots = S.slotList.length; S.mode5 = true;   // five options per slot for every roster (big rosters used to list whole pools) S.depth = S.nSlots>=13 ? 60 : 32;
   S.key = configKey(settings); S.label = configLabel(settings);
   S.weeks = sample(WEEK_KEYS, totalRounds(), R('weeks'));
@@ -2163,19 +2169,20 @@ function drawOffers(r){ const rng=R('shop'+r+'-'+(S.rerolls||0)); const held=new
 
 function startRound(){
   const r = S.round, [season, week] = S.weeks[r].split('-').map(Number);
-  S.season = season; S.week = week; setPalette(season);
-  buildRound(r);
+  S.season = season; S.week = S.keep ? keepWeek(r) : week; setPalette(season);
+  if(S.keep){ S.slotList=keepSlots(r); S.nSlots=S.slotList.length; keepBuild(r); } else buildRound(r);
   const all = S.slotList.map((_,i)=>i);
   let base = Infinity;
-  if(S.salaries){ const need = minFill(all, null); base = Math.max(S.budget, isFinite(need)?need:S.budget); S.coins = base + staffSum('coins'); }
-  S.budget0 = base; S.coinsStart = S.salaries ? S.coins : Infinity;
+  if(S.salaries && !S.keep){ const need = minFill(all, null); base = Math.max(S.budget, isFinite(need)?need:S.budget); S.coins = base + staffSum('coins'); }
+  S.budget0 = base; S.coinsStart = S.keep ? S.bank : S.salaries ? S.coins : Infinity;
   const fullOpts = S.options; if(S.mode5) S.options = fullOpts.map(o=>o.slice(0,5));
-  S.baseMax = solve(all, o=>o.p, S.budget0, null) || 0;
+  S.baseMax = S.keep ? 0 : (solve(all, o=>o.p, S.budget0, null) || 0);
   S.options = fullOpts;
   S.mult = roundMult(r);
-  S.target = Math.round(S.baseMax*S.mult*10)/10;
+  S.target = S.keep ? keepTarget(r) : Math.round(S.baseMax*S.mult*10)/10;
   S.shop = null;
   S.picks = new Array(S.nSlots).fill(null); S.lastCoins = null; S.active = 0; S.busts = staffSum('busts'); S.bustUsed = 0; S.busted = {}; S.holdMin = false; S.scouted = {}; S.replacing = null; S.res = null; S.introPlayed = false;
+  if(S.keep) keepPrefill();
   S.phase = 'intro'; beams(true); render();
 }
 
@@ -2320,7 +2327,7 @@ function shinyGreat(){ if(SHINY_GREAT) return SHINY_GREAT; const tot=new Map();
   return SHINY_GREAT={P, C}; }
 function prismRoll(k){ return (hashStr(String(S && S.seed)+'|prism|'+k)%10000)/10000; }
 function prismWeek(){ return S && S.weeks ? String(S.weeks[S.round] || S.weeks[0] || '') : ''; }
-function prismPlayer(o){ if(!PRISM.on || !o || !S) return ''; const wk=prismWeek(); if(!wk || !shinyGreat().P.has(wk.split('-')[0]+'|'+o.n+'|'+o.t)) return '';
+function prismPlayer(o){ if(!PRISM.on || !o || !S) return ''; const wk=o.ssn?o.ssn+'-'+o.wk:prismWeek(); if(!wk || !shinyGreat().P.has(wk.split('-')[0]+'|'+o.n+'|'+o.t)) return '';
   return prismRoll('p|'+wk+'|'+o.n) < PRISM.chance ? 'y' : ''; }
 function prismCls(tier, key, team){ return tier ? ' prism pk-'+String(key).replace(/[^A-Za-z0-9_-]/g,'')+(team?' pt-'+String(team).replace(/[^A-Za-z0-9]/g,''):'') : ''; }
 function prismPack(k){ return !!(S && S.shop && S.shop.prism && S.shop.prism[k]); }
@@ -2433,7 +2440,7 @@ function renderShop(){
     const tabs = opened.length>1 ? opened.map(k=>'<button class="ptab'+(k===v?' on':'')+'" data-act="viewPack:'+k+'"'+(k===v?' aria-current="true"':'')+'><span>'+esc((sh.themes[k]||'PACK '+(k+1)).toUpperCase())+'</span></button>').join('') : '';
     const minis = closed.map(k=>'<button class="minipack" data-act="openPack:'+k+'"'+(lites<cost?' disabled':'')+'><span class="mp-l"><i></i><em>'+esc((sh.themes[k]||'PACK '+(k+1)).toUpperCase())+'</em></span><span class="mp-c">'+liteI+cost+'</span></button>').join('');
     body = '<div class="shopwrap">'+
-      '<div class="shophead2"><div><span class="kicker">'+esc(stageShort(S.round))+' · Week '+S.week+', '+S.season+'</span><h2 class="packname">'+esc(((sh.themes[v]||'Coach')+' pack').toUpperCase())+'</h2></div><span class="tobeat"><small>TO BEAT</small> '+f1(S.target)+'</span></div>'+
+      '<div class="shophead2"><div><span class="kicker">'+esc(stageShort(S.round))+' · '+wkLbl()+'</span><h2 class="packname">'+esc(((sh.themes[v]||'Coach')+' pack').toUpperCase())+'</h2></div><span class="tobeat"><small>TO BEAT</small> '+f1(S.target)+'</span></div>'+
       ((tabs||minis) ? '<div class="packrowin">'+tabs+minis+'</div>' : '')+
       '<div class="cards hcards" id="cards">'+sh.packs[v].map((off,j)=>ccard(off, v+'-'+j, '', {select:true, sel:sh.sel===v+'-'+j})).join('')+'</div>'+
       '<div class="fliprow"><span>'+(full?'HIRING REPLACES SOMEONE':'')+'</span><button class="pill btn flipall" data-act="flipAll"><span>'+(anyUp?'FRONT ALL':'FLIP ALL')+'</span></button></div>'+
@@ -2523,9 +2530,158 @@ function bestWithStaff(){
   let best=0; const opts=S.options, B=S.salaries?S.coinsStart:Infinity, pick=[];
   (function go(i, spent){
     if(i===opts.length){ const v=lineupScore(pick, S.target); if(v>best) best=v; return; }
-    for(const o of opts[i]){ if(pick.some(p=>p.id===o.id)) continue; if(spent+o.cost>B) continue; pick.push(o); go(i+1, spent+o.cost); pick.pop(); }
+    for(const o of opts[i]){ if(pick.some(p=>p.id===o.id)) continue; if(o.out || spent+feeOf(o)>B) continue; pick.push(o); go(i+1, spent+feeOf(o)); pick.pop(); }
   })(0,0);
   return best;
+}
+
+/* ════════════════ ROSTER MODE (settings.keep) ════════════════
+   You keep your team all season. Every card is a player + a season; in game N of the run he
+   plays his real week N of that season. Each lineup slot shows your own players at that
+   position next to free agents, in the same draft stack. Starting your own player is free;
+   signing a free agent costs pearlites (his 1–5 season cost, growing every game) and puts
+   him under contract for 2–4 games. No coins: pearlites buy players, scouting and coaches.
+   Everything else (coaches, reveal, playoffs, the Pearl Press) is the normal game. */
+const KEEP = {start:16, growth:1.2, maxRoster:10, maxDrops:5, lowball:0.6,
+  m0:1.5, pw:1.0, q:{reg:1, po:1.08, poStep:0.2, sb:1.3},   // target = lineup base x the staff multiplier a typical run has by then (m0 x games^pw) x q for the stage
+
+  base:{QB:21, RB:15, WR:15, TE:10, FLEX:14, K:9, DST:9, DL:8, LB:9, CB:7, S:7}};
+const wkLbl = () => S.keep ? 'Week '+S.week : 'Week '+S.week+', '+S.season;
+const feeOf = o => (S && S.keep) ? (o.fee||0) : o.cost;
+const purse = d => { if(S.keep) S.bank += d; else S.coins += d; };
+let KIDX = null;
+function keepIndex(){
+  if(KIDX && KIDX.scoring===S.scoring) return KIDX;
+  const cards=new Map(), playing={}, pools={};
+  for(const key of WEEK_KEYS){ const [ssn,w]=key.split('-').map(Number), wk=D.weeks[key], ts=playing[key]=new Set();
+    DPOS.forEach(pos=>{ (wk[pos]||[]).forEach(e=>{ ts.add(e[1]);
+      const k=ssn+'|'+e[0]+'|'+pos; let c=cards.get(k);
+      if(!c){ c={k, ni:e[0], pos, ssn, wk:{}, gp:0, tot:0, cost:e[4]}; cards.set(k,c); }
+      c.wk[w]=e; c.gp++; c.tot+=ptsFor(e,pos); if(e[4]>c.cost) c.cost=e[4]; }); }); }
+  cards.forEach(c=>{ c.ppg=c.tot/c.gp; (pools[c.pos]=pools[c.pos]||[]).push(c); });
+  Object.keys(pools).forEach(p=>{ pools[p]=pools[p].filter(c=>c.gp>=8).sort((a,b)=>b.ppg-a.ppg); });
+  return KIDX={scoring:S.scoring, cards, playing, pools};
+}
+const keepWeek = r => (r%17)+1;
+const keepFee = (c, r) => Math.max(1, Math.round(c.cost*Math.pow(KEEP.growth, r)));
+// one card as a draft option for game r: his real game that week, or OUT (bye week / no game on record)
+function keepOpt(c, r, extra){
+  const w=keepWeek(r), e=c.wk[w];
+  const o={id:'k'+c.k, k:c.k, n:D.names[c.ni], pos:c.pos, cost:c.cost, ssn:c.ssn, wk:w, ppg:Math.round(c.ppg*10)/10};
+  if(e) Object.assign(o, {t:D.teams[e[1]], o:D.teams[e[2]], home:e[5], p:Math.max(0,Math.round(ptsFor(e,c.pos)*10)/10), hl:e[7]||null});
+  else { let te=null; for(let x=w-1;x>=1&&!te;x--) if(c.wk[x]) te=c.wk[x]; for(let x=w+1;x<=18&&!te;x++) if(c.wk[x]) te=c.wk[x];
+    const ts=KIDX.playing[c.ssn+'-'+w], bye=!ts || !te || !ts.has(te[1]);
+    Object.assign(o, {t:te?D.teams[te[1]]:'', o:'', home:1, p:0, hl:null, out:bye?'BYE':'OUT'}); }
+  return Object.assign(o, extra||{});
+}
+function keepSlots(r){
+  const base=S.slotBase; if(r===0 || !S.keepGrow) return base.slice();
+  const cnt={}; base.concat(S.keepGrow).forEach(s=>cnt[s]=(cnt[s]||0)+1); return rosterSlots(cnt);
+}
+function keepBuild(r){
+  const X=keepIndex(), rng=R('keep'+r), w=keepWeek(r);
+  const used=new Set(S.roster.map(x=>x.k)), names=new Set(S.roster.map(x=>x.ni));
+  const ok = c => c.wk[w] && !used.has(c.k) && !names.has(c.ni);
+  const take = (list, c, extra) => { used.add(c.k); names.add(c.ni); list.push(keepOpt(c, r, extra)); };
+  S.pools={};
+  S.options = S.slotList.map(slot => {
+    const poss = slot==='FLEX' ? FLEXABLE : [slot];
+    const own = S.roster.filter(x=>poss.includes(x.pos)).map(x=>({x, c:X.cards.get(x.k)})).filter(z=>z.c)
+      .sort((a,b)=>b.c.ppg-a.c.ppg).slice(0,3).map(z=>keepOpt(z.c, r, {own:true, fee:0, left:z.x.left, hist:z.x.hist}));
+    const pool = poss.length>1 ? poss.flatMap(p=>X.pools[p]||[]).sort((a,b)=>b.ppg-a.ppg) : (X.pools[slot]||[]);
+    const nFA = Math.max(1, 4-own.length), fa=[];
+    // contracts that just ran out come back first, as RE-SIGN offers at this week's price
+    (S.expired||[]).filter(x=>poss.includes(x.pos)).forEach(x=>{ const c=X.cards.get(x.k);
+      if(c && fa.length<nFA && !used.has(c.k) && !names.has(c.ni)) take(fa, c, {fee:keepFee(c,r), len:2+Math.floor(rng()*3), resign:true}); });
+    const elite = pool.slice(0, Math.ceil(pool.length*0.12)).filter(ok), mid = pool.slice(0, Math.ceil(pool.length*0.6)).filter(ok);
+    if(fa.length<nFA && elite.length) take(fa, elite[Math.floor(rng()*elite.length)], {fee:0, len:2+Math.floor(rng()*3)});
+    for(let g=0; fa.length<nFA && g<200; g++){ const c=mid[Math.floor(rng()*mid.length)]; if(c && ok(c)) take(fa, c, {fee:0, len:2+Math.floor(rng()*3)}); }
+    fa.forEach(o=>{ if(!o.resign) o.fee=keepFee(X.cards.get(o.k), r); });
+    fa.sort((a,b)=>b.fee-a.fee || b.ppg-a.ppg);
+    // every slot always has one free walk-on, so a lineup can always be filled
+    let low = pool.filter(c=>c.cost<=(slot==='DST'?2:1) && ok(c)); if(!low.length) low = pool.slice(Math.floor(pool.length*0.8)).filter(ok);
+    if(low.length) take(fa, low[Math.floor(rng()*low.length)], {fee:0, len:1, walk:true});
+    return own.concat(fa);
+  });
+}
+// last week's lineup carries over: each slot starts with your best healthy player who isn't already starting
+function keepPrefill(){
+  const takenIds=new Set();
+  S.slotList.forEach((slot,i)=>{ const o=S.options[i].find(o=>o.own && !o.out && !takenIds.has(o.id)); if(o){ S.picks[i]=o; takenIds.add(o.id); } });
+  const open=S.picks.findIndex(p=>!p); S.active = open>=0 ? open : 0; S.holdMin = open<0;
+  S.offerUsed=false; S.drops=0;
+  if(S.expired && S.expired.length) S.keepMsg = 'Contracts up: '+S.expired.map(x=>lastName(D.names[x.ni])).join(', ')+'. Re-sign at this week’s price or let them walk.';
+  else S.keepMsg = S.round===0 ? 'Sign your first five. They stay on your team after this game.' : '';
+}
+const keepBase = () => S.slotList.reduce((a,s)=>a+(KEEP.base[s]||10),0);
+function keepTarget(r){ const st=stageOf(r), q = st==='po' ? Math.min(1.34, KEEP.q.po+KEEP.q.poStep*(r-S.reg)) : KEEP.q[st];   // each playoff game is a bigger ask than the last
+  return Math.round(keepBase()*(KEEP.m0*Math.pow(r+1,KEEP.pw))*q*S.diff); }
+const keepCount = exceptSlot => S.roster.length + S.picks.filter((p,i)=>p && !p.own && !p.walk && i!==exceptSlot).length;   // walk-ons are one-game rentals: they never take a roster spot
+function keepCard(o){ return {k:o.k, ni:KIDX.cards.get(o.k).ni, pos:o.pos, ssn:o.ssn, left:o.len||2, paid:o.fee||0, hist:[]}; }
+// lock in: every free agent in the lineup signs
+function keepCommit(){ S.picks.forEach(o=>{ if(o && !o.own && !o.walk){ S.roster.push(keepCard(o)); o.own=true; o.left=o.len; } }); }
+// sign a free agent straight to the bench (he doesn't start this game)
+function keepBench(i){
+  const a=S.active, o=S.options[a][i]; if(!o || o.own || o.out || o.walked) return;
+  const cur=S.picks[a]; if(cur && cur.id===o.id) return;
+  if(keepCount(-1)>=KEEP.maxRoster){ S.keepMsg='Roster full ('+KEEP.maxRoster+'). Release a player first.'; render(); return; }
+  if(S.bank<feeOf(o)){ S.keepMsg='Not enough pearlites to sign '+lastName(o.n)+'.'; render(); return; }
+  S.bank-=feeOf(o); S.roster.push(Object.assign(keepCard(o), {paid:o.fee}));
+  o.own=true; o.left=o.len; o.fee=0; o.benched=true; S.keepMsg=lastName(o.n)+' signed to your bench for '+o.len+' game'+(o.len>1?'s':'')+'.'; sfx.tick && sfx.tick(); render();
+}
+function keepRelease(i){
+  const a=S.active, o=S.options[a][i]; if(!o || !o.own) return;
+  if((S.drops||0)>=KEEP.maxDrops){ S.keepMsg='You can release up to '+KEEP.maxDrops+' players a game.'; render(); return; }
+  S.roster=S.roster.filter(x=>x.k!==o.k); S.drops=(S.drops||0)+1;
+  S.picks.forEach((p,j)=>{ if(p && p.id===o.id) S.picks[j]=null; });
+  S.options=S.options.map(list=>list.filter(x=>x.id!==o.id)); if(S.spot) S.spot={};
+  S.keepMsg=lastName(o.n)+' released.'; render();
+}
+// one lowball offer a game. A good team helps; sitting on a pile of pearlites hurts; an insulted player walks.
+function keepLowball(i){
+  const a=S.active, o=S.options[a][i]; if(!o || o.own || o.walk || o.walked || o.deal || S.offerUsed || !o.fee) return;
+  const cur=S.picks[a]; if(cur && cur.id===o.id) return;
+  S.offerUsed=true;
+  const rng=R('nego'+S.round), games=S.wins+S.losses, form=games?S.wins/games:0.5, offer=Math.max(1, Math.floor(o.fee*KEEP.lowball));
+  const rich=S.bank/(S.bank+4*o.fee), p=Math.max(0.1, Math.min(0.9, 0.42+0.36*form-0.4*rich+(o.cost<=2?0.15:0)));
+  if(rng()<p){ o.fee=offer; o.deal=true; S.keepMsg=lastName(o.n)+' takes the deal: '+offer+' pearlites.'; sfx.tick && sfx.tick(); }
+  else if(rng()<0.5){ o.walked=true; S.keepMsg=lastName(o.n)+' felt disrespected and walked.'; sfx.zap && sfx.zap(2); }
+  else S.keepMsg=lastName(o.n)+' holds firm at '+o.fee+'.';
+  render();
+}
+// after a game: log every rostered player's week, run contracts down, and set up next week's RE-SIGN offers
+function keepAfterGame(){
+  const X=keepIndex(), w=keepWeek(S.round);
+  S.roster.forEach(x=>{ const c=X.cards.get(x.k), e=c && c.wk[w]; x.hist=x.hist||[]; x.hist.push(e?Math.round(ptsFor(e,x.pos)*10)/10:null); x.left--; });
+  S.expired=S.roster.filter(x=>x.left<=0); S.roster=S.roster.filter(x=>x.left>0);
+}
+const keepHist = h => (h||[]).map(v=>v==null?'–':Math.round(v)).join(' · ');
+function keepTag(o, mine, taken){
+  return o.out ? '<span class="tag bust">'+(o.out==='BYE'?'BYE WEEK':'OUT')+'</span>' : o.walked ? '<span class="tag bust">WALKED</span>'
+    : mine ? '<span class="tag in">STARTING</span>' : taken ? '<span class="tag">IN LINEUP</span>'
+    : o.own ? '<span class="tag">ON ROSTER</span>' : o.resign ? '<span class="tag top">RE-SIGN</span>' : o.walk ? '<span class="tag">WALK-ON</span>' : o.deal ? '<span class="tag top">DEAL</span>' : '';
+}
+const keepLbl = (o, mine, taken) => o.out?(o.out==='BYE'?'BYE WEEK':'OUT'):o.walked?'WALKED':mine?'STARTING':taken?'IN LINEUP':o.own?'ON ROSTER':o.resign?'RE-SIGN':o.walk?'WALK-ON':null;
+const priceH = o => !S.keep ? costH(o.cost) : o.own ? '<span class="cost own">'+o.left+' WK</span>' : '<span class="cost">'+liteI+o.fee+'</span>';
+function keepPickLabel(o, mine, taken, afford, ln){
+  const L=esc(ln.toUpperCase());
+  return o.out ? (o.out==='BYE'?'ON HIS BYE WEEK':'OUT THIS WEEK') : o.walked ? 'HE WALKED' : mine ? 'STARTING · TAP TO SIT' : taken ? 'ALREADY IN YOUR LINEUP'
+    : o.own ? 'START '+L : !afford ? 'NOT ENOUGH PEARLITES' : (o.resign?'RE-SIGN ':'SIGN ')+L+' · '+(o.fee?o.fee+' ◈':'FREE')+' · '+(o.walk?'THIS GAME':o.len+' GAME'+(o.len>1?'S':''));
+}
+function keepSpotActions(o, sp, mine){
+  const btn=(label, act, off)=>'<button class="ghost kbtn" data-act="'+act+'"'+(off?' disabled':'')+'><span>'+label+'</span></button>';
+  let row='';
+  if(o.own) row = btn('RELEASE','release:'+sp,(S.drops||0)>=KEEP.maxDrops);
+  else if(!o.out && !o.walked && !mine && !o.walk) row = btn('+ BENCH','bench:'+sp,false)+(o.fee && !o.walk && !o.deal ? btn(S.offerUsed?'OFFER USED':'LOWBALL · '+Math.max(1,Math.floor(o.fee*KEEP.lowball))+' ◈','lowball:'+sp,!!S.offerUsed) : '');
+  const info = o.own ? 'Contract: '+o.left+' game'+(o.left>1?'s':'')+' left'+(o.hist&&o.hist.length?' · this run: '+keepHist(o.hist):'')
+    : o.walk ? 'Free for this game only. He never takes a roster spot.' : 'Averaged '+o.ppg+' a game in '+o.ssn+'.';
+  return '<div class="keeprow"><small>'+esc(info)+'</small><span>'+row+'</span></div>'+(S.keepMsg?'<div class="keepmsg">'+esc(S.keepMsg)+'</div>':'');
+}
+function keepRosterHtml(){
+  if(!S.keep) return '';
+  const X=keepIndex(), rows=S.roster.slice().sort((a,b)=>SLOT_ORDER.indexOf(a.pos)-SLOT_ORDER.indexOf(b.pos)).map(x=>{ const c=X.cards.get(x.k);
+    return '<div class="row"><span><b>'+x.pos+'</b> '+esc(D.names[x.ni])+' <small class="copy" style="font-size:12px">’'+String(x.ssn).slice(2)+' · '+(c?c.ppg.toFixed(1):'')+' avg</small></span><span class="copy" style="font-size:13px">'+(x.hist&&x.hist.length?keepHist(x.hist)+' · ':'')+x.left+' wk</span></div>'; }).join('');
+  return lc('<div class="kicker">Your roster · '+S.roster.length+' of '+KEEP.maxRoster+' · contract weeks left on the right</div>'+(rows||'<p class="copy" style="font-size:14px">Nobody signed yet.</p>'));
 }
 
 /* ---------- visuals ---------- */
@@ -5014,7 +5170,7 @@ function openContinue(){
   const r=savedRun(); if(!r){ homeExit(); return; }
   sheetMode='cont';
   $sheetBody.innerHTML='<div class="row"><h2 class="h2">YOUR RUN IS SAVED</h2><button class="pill btn" data-close><span>Close</span></button></div>'+
-    lc('<p class="copy" style="margin-top:0">'+esc(stageNameOf(r))+' · Week '+r.week+', '+r.season+' · '+r.wins+'–'+r.losses+'</p>'+
+    lc('<p class="copy" style="margin-top:0">'+esc(stageNameOf(r))+' · Week '+r.week+(r.keep?'':', '+r.season)+' · '+r.wins+'–'+r.losses+'</p>'+
       '<div class="ctaw"><button class="cta" data-act="resume"><span>CONTINUE</span></button></div><div class="btnrow" style="margin-top:10px">'+ghost('NEW RUN','newRun')+'</div>', false);
   $sheet.classList.remove('hidden');
 }
@@ -5287,7 +5443,7 @@ function renderSetup(){
   $app.innerHTML = top()+
     '<div class="kowrap"><div class="kohero koplay">'+playStageHtml()+
     '</div>'+
-    '<div class="kobtns">'+cta('KICK OFF','start')+'<div class="btnrow">'+ghost('⚙ ADVANCED','adv')+ghost('BACK','home')+'</div></div></div>';
+    '<div class="kobtns"><div class="keepsel">'+seg('keep',[['true','ROSTER<small>keep your team all season</small>'],['false','CLASSIC<small>new draft every game</small>']],!!settings.keep)+'</div>'+cta('KICK OFF','start')+'<div class="btnrow">'+ghost('⚙ ADVANCED','adv')+ghost('BACK','home')+'</div></div></div>';
   startLoops(); wirePlay();
 }
 
@@ -5321,7 +5477,7 @@ function openAdvanced(){ sheetMode='adv'; renderAdvanced(); $sheet.classList.rem
 /* settings changes, shared by the setup screen and the advanced sheet */
 function applySetting(el){
   if(el.dataset.set){ const k=el.dataset.set, v=el.dataset.val;
-    if(k==='salaries' || k==='defOn' || k==='sound') settings[k] = v==='true';
+    if(k==='salaries' || k==='defOn' || k==='sound' || k==='keep') settings[k] = v==='true';
     else if(k==='fmt'){ settings.fmt=v; if(v!=='custom'){ const f=FORMATS[v]; settings.reg=f.reg; settings.po=f.po; } }
     else settings[k]=v;
     if(k==='defOn') settings.budget=null;
@@ -5568,7 +5724,7 @@ function renderIntro(){
   if(S.introPlayed) return;
   S.introPlayed = true; skip = false;
   sfx.whoosh();
-  laserText($('iweek'), 'WEEK '+S.week+' · '+S.season, 35);
+  laserText($('iweek'), (S.keep?'WEEK '+S.week+' · ALL-TIME':'WEEK '+S.week+' · '+S.season), 35);
   const t=$('itg'); t.textContent='0.0';
   setTimeout(()=>{ if(S && S.phase==='intro' && $('itg')===t){ countTo(t, 0, S.target, 700).then(()=>{ popEl(t); sfx.hit(0.4); sparks(t, 18, 0.6); }); } }, 550);
 }
@@ -5739,7 +5895,7 @@ function renderIntroPlay(){
   P.g=$app.querySelector('#iplay .pg'); P.grad='url(#'+gid+')'; requestAnimationFrame(playDriver);
   if(S.introPlayed) return;
   S.introPlayed = true; skip = false; sfx.whoosh();
-  laserText($('iweek'), 'WEEK '+S.week+' · '+S.season, 35);
+  laserText($('iweek'), (S.keep?'WEEK '+S.week+' · ALL-TIME':'WEEK '+S.week+' · '+S.season), 35);
   const t=$('itg'); t.textContent='0.0';
   setTimeout(()=>{ if(S && S.phase==='intro' && $('itg')===t) countTo(t, 0, S.target, 700).then(()=>{ popEl(t); sfx.hit(0.4); }); }, 550);
 }
@@ -5806,7 +5962,7 @@ function fitReveal(){ screenTag(); const st=$('rstage'); if(!st) return; const r
 function renderReveal(){
   const x = S.res, order = x.rows.order, on = settings.sound!==false;
   $app.innerHTML = top()+
-    '<div class="revhead"><div><span class="kicker">'+esc(stageName(S.round))+' · Week '+S.week+', '+S.season+'</span><h1 class="mega revtitle">THE REVEAL</h1></div>'+
+    '<div class="revhead"><div><span class="kicker">'+esc(stageName(S.round))+' · '+wkLbl()+'</span><h1 class="mega revtitle">THE REVEAL</h1></div>'+
       '<div class="revctl"><button class="iconbtn" data-act="sound" aria-label="Sound" aria-pressed="'+on+'">'+revIcon(on?'sound':'mute')+'</button><button class="iconbtn" data-act="skip" aria-label="Skip to the result">'+revIcon('skip')+'</button></div></div>'+
     '<div class="meter" id="meter"><div class="fill" id="fill"></div><div class="fill2" id="fill2"></div><div class="in"><span class="sc" id="sc">0.0</span><span class="tg" id="tgl">TO BEAT<br>'+f1(S.target)+'</span></div></div>'+
     '<div class="rstrip" id="rstrip" aria-label="Your lineup in reveal order">'+order.map(i=>'<div class="rsc'+prismCls(prismPlayer(x.rows[i].o),x.rows[i].o.n,x.rows[i].o.t)+'" id="rs'+i+'"><span>'+x.rows[i].slot+'</span><b>?</b></div>').join('')+'</div>'+
@@ -5939,7 +6095,7 @@ async function playReveal(){
         fl.animate([{transform:'translate(-50%,-50%) scale(1.5)'},{transform:'translate(calc(-50% + '+(c2-a2)+'px), calc(-50% + '+(d2-b2)+'px)) scale(.45)'}],{duration:200,easing:'cubic-bezier(.5,0,.3,1)',fill:'forwards'}); await wait(200); fl.remove(); }
       cs.classList.remove('now'); cs.classList.add('done'); cs.querySelector('b').textContent=f1(r.t); replay(cs,'pop'); }
     await wait(260*speed); if(!alive()) return;
-    if(run >= S.target && pos < n-1 && !x.sellAsked){
+    if(run >= S.target && pos < n-1 && !x.sellAsked && !S.keep){
       x.sellAsked = true;
       const rest = order.slice(pos+1);
       const wasSkip = skip; skip = false;
@@ -5979,7 +6135,7 @@ function finishReveal(instant){
     return '<div class="sbr'+prismCls(prismPlayer(o),o.n,o.t)+(top?' mvp':'')+(r.sold?' sold':'')+'">'+(cols<3 ? stillArt(loopArt(lp.id, TC[o.t]||'#9ff0ff', TC[o.o]||'#8a86a8', cols===1?44:30, .32, lp.flip, CRT.cards)) : '')+
       '<div class="sbn"><b>'+esc(cols===1 ? o.n : l)+'</b><small>'+(top ? (x.win?'MVP':'TOP')+' · ' : '')+r.slot+' · '+esc(o.t)+'</small></div><span class="sbp">'+(r.sold?'SOLD':f1(r.t))+'</span></div>'; };
   $app.innerHTML = top()+
-    '<div class="vbox '+(x.win?'win':'loss')+(instant?'':' slam')+'" id="verdict"><div class="vb-row"><div><span class="kicker">'+esc(stageName(S.round))+' · Week '+S.week+', '+S.season+'</span><b class="vword">'+(x.win?'WIN':'LOSS')+'</b></div>'+
+    '<div class="vbox '+(x.win?'win':'loss')+(instant?'':' slam')+'" id="verdict"><div class="vb-row"><div><span class="kicker">'+esc(stageName(S.round))+' · '+wkLbl()+'</span><b class="vword">'+(x.win?'WIN':'LOSS')+'</b></div>'+
       '<div class="vb-r"><b>'+f1(x.score)+'</b><small>TO BEAT '+f1(S.target)+'</small><span class="vbadge">'+badge+'</span></div></div>'+(x.why?'<p class="vwhy">'+esc(x.why)+'</p>':'')+'</div>'+
     '<div class="sbrows c'+cols+'">'+sorted.map(row).join('')+'</div>'+
     '<div class="rchips"><button class="litechip" data-act="earnInfo" aria-label="Pearlites earned, see the breakdown">'+liteI+' +'+x.earnTotal+' PEARLITES <i>ⓘ</i></button><button class="misschip" data-act="teamPlayers">WHO YOU MISSED</button></div>'+
@@ -6147,8 +6303,11 @@ function fitDraft(){ const w=document.querySelector('.dmain'); if(!w) return; co
 function pickOption(i){
   if(TUT && !TUT.seen.redo) setTimeout(()=>{ if(TUT && !TUT.seen.redo && S && S.phase==='draft' && S.picks.filter(Boolean).length===2 && !$('tut')){ TUT.seen.redo=true; tutShow('redo', 0); } }, 650);
       const o = S.options[S.active][i], cur = S.picks[S.active];
-      if(cur && cur.id===o.id){ if(S.salaries) S.coins += o.cost; S.picks[S.active]=null; render(); return; }
-      if(S.salaries){ S.coins += cur?cur.cost:0; S.coins -= o.cost; }
+      if(S.keep){ if(o.out || o.walked) return;
+        if(!(cur && cur.id===o.id) && !o.own && !o.walk && keepCount(S.active)>=KEEP.maxRoster){ S.keepMsg='Roster full ('+KEEP.maxRoster+'). Release a player first.'; render(); return; }
+        S.keepMsg=''; }
+      if(cur && cur.id===o.id){ if(S.salaries) purse(feeOf(o)); S.picks[S.active]=null; render(); return; }
+      if(S.salaries){ purse((cur?feeOf(cur):0) - feeOf(o)); }
       S.picks[S.active] = o;
       const nextOpen = S.picks.findIndex((p,i)=>!p && i>S.active), anyOpen = S.picks.findIndex(p=>!p);
       if(nextOpen>=0) S.active=nextOpen; else if(anyOpen>=0) S.active=anyOpen;
@@ -6175,7 +6334,7 @@ function renderDraft(){
   const a = S.active, slot = S.slotList[a], cur = S.picks[a];
   const others = pickedIds(a);
   const unfilled = S.slotList.map((_,i)=>i).filter(i=>i!==a && !S.picks[i]);
-  const avail = S.salaries ? S.coins + (cur?cur.cost:0) : Infinity;
+  const avail = S.salaries ? (S.keep?S.bank:S.coins) + (cur?feeOf(cur):0) : Infinity;
   const need = S.salaries ? minFill(unfilled, new Set([...others, ...(cur?[cur.id]:[])])) : 0;
   const opts = S.options[a];
   const scouted = S.scouted[a];
@@ -6184,17 +6343,17 @@ function renderDraft(){
   const lps = assignLoops(opts, S.seed+'-'+S.round+'-'+a);
   const rows = opts.map((o,i) => {
     const mine = cur && cur.id===o.id, taken = others.has(o.id);
-    const afford = mine || !S.salaries || (avail - o.cost >= need);
+    const afford = (mine || !S.salaries || (avail - feeOf(o) >= need)) && !o.out && !o.walked;
     const hot = topId===o.id;
     return '<button class="opt'+(mine?' picked':'')+(hot?' hot':'')+'" style="--k:'+i+'" data-act="pick:'+i+'"'+(!taken && afford ? '' : ' disabled')+'><span>'+loopSvg(o,50,lps[o.id])+
       '<span class="who"><span class="nm">'+esc(o.n)+'</span><span class="mt">'+(slot==='FLEX'?o.pos+', ':'')+matchup(o)+'</span></span>'+
       (mine?'<span class="tag in">YOUR PICK</span>':taken?'<span class="tag">IN LINEUP</span>':hot?'<span class="tag">TOP SCORER</span>':bustId===o.id?'<span class="tag bust">BUST</span>':'')+(isTagged(S.season,S.week,o)?'<span class="tag tg">TAGGED</span>':'')+
-      (S.salaries?costH(o.cost):'')+'</span></button>';
+      (S.salaries?priceH(o):'')+'</span></button>';
   }).join('');
   const tabs = S.slotList.map((s,i)=>{ const p=S.picks[i];
     return '<button class="slot'+(p?' filled':'')+(i===a?' now':'')+'" data-act="slot:'+i+'" aria-pressed="'+(i===a)+'"><span>'+s+(p?' · '+esc(lastName(p.n)):'')+'</span></button>'; }).join('');
   const full = S.picks.every(Boolean);
-  const lastCoinsBefore = S.lastCoins; S.lastCoins = S.coins;
+  const lastCoinsBefore = S.lastCoins; S.lastCoins = S.keep ? S.bank : S.coins;
   const holdHtml = full ? '<div class="holdfloat'+(S.holdMin?' min':'')+'"><span class="hspot" aria-hidden="true"></span><span class="hswirl" aria-hidden="true"></span><span class="hswirl b" aria-hidden="true"></span>'+
       '<span class="hrays" aria-hidden="true">'+rayField(40, 84, 150)+'</span>'+holdBtn('HOLD','TO LOCK IN','lock')+'<button class="notyet" data-act="holdMin" aria-label="Not ready yet, shrink the lock ring">← NOT YET</button></div>' : '';
   if(opts.length<=5){
@@ -6202,31 +6361,31 @@ function renderDraft(){
     S.spot = S.spot || {};
     let sp = S.spot[a]; if(sp==null || !opts[sp]) sp = cur ? Math.max(0, opts.findIndex(o=>o.id===cur.id)) : 0;
     const spotFor = (sp) => {
-    const o = opts[sp], mine = cur && cur.id===o.id, taken = others.has(o.id), afford = mine || !S.salaries || (avail - o.cost >= need);
-    const st = seasonTable(S.season, o.pos), [fn,ln] = nameParts(o.n), ppg = st.gp[o.n] ? st.tot[o.n]/st.gp[o.n] : null, rk = st.rk[o.n], al = st.al[o.o];
+    const o = opts[sp], mine = cur && cur.id===o.id, taken = others.has(o.id), afford = (mine || !S.salaries || (avail - feeOf(o) >= need)) && !o.out && !o.walked;
+    const st = seasonTable(o.ssn||S.season, o.pos), [fn,ln] = nameParts(o.n), ppg = st.gp[o.n] ? st.tot[o.n]/st.gp[o.n] : null, rk = st.rk[o.n], al = st.al[o.o];
     const staffM = S.coaches.reduce((t,ci)=>t+(coachObj(ci).m[o.pos]||0)+metaOf(ci).grow, 0);
-    const tagOf = (x) => { const m=cur && cur.id===x.id; return m?'<span class="tag in">YOUR PICK</span>':others.has(x.id)?'<span class="tag">IN LINEUP</span>':topId===x.id?'<span class="tag top">TOP SCORER</span>':bustId===x.id?'<span class="tag bust">BUST</span>':''; };
+    const tagOf = (x) => { const m=cur && cur.id===x.id; if(S.keep){ const kt=keepTag(x, m, others.has(x.id)); if(kt) return kt; } return m?'<span class="tag in">YOUR PICK</span>':others.has(x.id)?'<span class="tag">IN LINEUP</span>':topId===x.id?'<span class="tag top">TOP SCORER</span>':bustId===x.id?'<span class="tag bust">BUST</span>':''; };
     const stat = (v,l) => '<div class="sp-st"><b>'+v+'</b><small>'+esc(l)+'</small></div>';
     return '<div class="spcard'+prismCls(prismPlayer(o),o.n,o.t)+(mine?' mine':'')+(topId===o.id?' hot':'')+'"><div class="spin">'+
-      '<div class="sp-top"><div class="sp-art">'+loopSvg(o,116,lps[o.id])+'</div><div class="sp-info"><span class="kicker">'+o.pos+(rk?' #'+rk+' of '+st.n:'')+' · '+S.season+'</span>'+
+      '<div class="sp-top"><div class="sp-art">'+loopSvg(o,116,lps[o.id])+'</div><div class="sp-info"><span class="kicker">'+o.pos+(rk?' #'+rk+' of '+st.n:'')+' · '+(o.ssn||S.season)+'</span>'+
         (fn?'<small>'+esc(fn.toUpperCase())+'</small>':'')+'<b class="sp-n">'+esc(ln.toUpperCase())+'</b><span class="sp-m">'+(slot==='FLEX'?o.pos+', ':'')+matchup(o)+'</span>'+
-        '<span class="sp-c">'+(S.salaries?costH(o.cost):'')+tagOf(o)+(isTagged(S.season,S.week,o)?'<span class="tag tg">TAGGED</span>':'')+'</span></div></div>'+
+        '<span class="sp-c">'+(S.salaries?priceH(o):'')+tagOf(o)+(isTagged(o.ssn||S.season,o.wk||S.week,o)?'<span class="tag tg">TAGGED</span>':'')+'</span></div></div>'+
       '<div class="sp-stats">'+stat(ppg!=null?ppg.toFixed(1):'—','pts per game')+stat(al!=null?al.toFixed(1):'—',o.o+' allows to '+o.pos+'s')+stat((S.coaches.length?staffM:1).toFixed(2)+'x', S.coaches.length?'your '+o.pos+' multiplier':'no coaches yet')+'</div>'+
-      '<button class="sp-pick" data-act="pick:'+sp+'"'+(mine || (!taken && afford) ? '' : ' disabled')+'><span>'+(mine?'YOUR PICK · TAP TO DROP':taken?'ALREADY IN YOUR LINEUP':!afford?'NOT ENOUGH COINS':'PICK '+esc(ln.toUpperCase())+(S.salaries?' · '+o.cost+' COIN'+(o.cost>1?'S':''):''))+'</span></button>'+
+      '<button class="sp-pick" data-act="pick:'+sp+'"'+(mine || (!taken && afford) ? '' : ' disabled')+'><span>'+(S.keep ? keepPickLabel(o, mine, taken, afford, ln) : (mine?'YOUR PICK · TAP TO DROP':taken?'ALREADY IN YOUR LINEUP':!afford?'NOT ENOUGH COINS':'PICK '+esc(ln.toUpperCase())+(S.salaries?' · '+o.cost+' COIN'+(o.cost>1?'S':''):'')))+'</span></button>'+(S.keep?keepSpotActions(o, sp, mine):'')+
       (full ? '<div class="spring"><span class="hswirl sm" aria-hidden="true"></span><span class="hrays sm" aria-hidden="true">'+rayField(10, 40, 62)+'</span>'+holdBtn('HOLD','LOCK IN','lock',700)+'</div>' : '')+
     '</div></div>'; };
     DSPOT = spotFor; const spot = spotFor(sp);
-    const minis = opts.map((x,i)=>{ const m=cur && cur.id===x.id, tk=others.has(x.id), af=m || !S.salaries || (avail - x.cost >= need), xs=seasonTable(S.season,x.pos), [,xl]=nameParts(x.n);
-      const lbl = m?'YOUR PICK':tk?'IN LINEUP':topId===x.id?'TOP SCORER':bustId===x.id?'BUST':x.pos+(xs.rk[x.n]?' #'+xs.rk[x.n]:'');
+    const minis = opts.map((x,i)=>{ const m=cur && cur.id===x.id, tk=others.has(x.id), af=(m || !S.salaries || (avail - feeOf(x) >= need)) && !x.out && !x.walked, xs=seasonTable(x.ssn||S.season,x.pos), [,xl]=nameParts(x.n);
+      const lbl = (S.keep && keepLbl(x, m, tk)) || (m?'YOUR PICK':tk?'IN LINEUP':topId===x.id?'TOP SCORER':bustId===x.id?'BUST':x.pos+(xs.rk[x.n]?' #'+xs.rk[x.n]:''));
       return '<button class="mopt'+prismCls(prismPlayer(x),x.n,x.t)+(i===sp?' on':'')+(m?' picked':'')+(topId===x.id?' hot':'')+(!tk && af || m ? '' : ' dim')+'" data-act="spot:'+i+'" data-lbl="'+esc(lbl)+'" style="--k:'+i+'" aria-pressed="'+(i===sp)+'" aria-label="'+esc(x.n)+', '+esc(matchup(x))+(S.salaries?', '+x.cost+' coins':'')+'. Double tap to pick">'+
-        '<span class="mo-top"><span>'+(i===sp?(topId===x.id?'TOP SCORER':'SPOTLIGHT'):lbl)+'</span>'+(S.salaries?costH(x.cost):'')+'</span>'+
+        '<span class="mo-top"><span>'+(i===sp?(topId===x.id?'TOP SCORER':'SPOTLIGHT'):lbl)+'</span>'+(S.salaries?priceH(x):'')+'</span>'+
         '<span class="mo-art">'+loopSvg(x,52,lps[x.id])+'</span><span class="mo-n">'+esc(xl.toUpperCase())+'</span><span class="mo-m">'+esc(matchup(x))+'</span></button>'; }).join('');
     const acts = '<div class="mact">'+scoutBtn(scouted, 'SCOUT · '+SCOUT+' ◈')+
       (S.busts?ghost(S.busted[a]?'BUST FLAGGED':'FLAG A BUST · '+(S.busts-S.bustUsed)+' FREE','bust',!!S.busted[a]||S.bustUsed>=S.busts):'')+'</div>';
     $app.innerHTML = top()+
-      '<div class="dtop dmain'+(S.holdMin?' docked':'')+'"><div class="dhud"><div class="dh-l"><span class="kicker">'+esc(stageName(S.round))+' · Week '+S.week+', '+S.season+'</span><h1 class="mega dh-t">DRAFT '+slot+'</h1></div>'+
+      '<div class="dtop dmain'+(S.holdMin?' docked':'')+'"><div class="dhud"><div class="dh-l"><span class="kicker">'+esc(stageName(S.round))+(S.keep?' · Week '+S.week:' · Week '+S.week+', '+S.season)+'</span><h1 class="mega dh-t">'+(S.keep?'':'DRAFT ')+slot+'</h1></div>'+
         '<div class="dh-s"><small>SCORE TO BEAT</small><b>'+f1(S.target)+'</b></div>'+
-        (S.salaries?'<div class="dh-s coins"><small>COINS</small><b id="ccount" class="'+(lastCoinsBefore!=null&&lastCoinsBefore!==S.coins?'pop':'')+'">'+coinI+S.coins+'</b></div>':'')+'</div>'+
+        (S.salaries?'<div class="dh-s coins"><small>'+(S.keep?'PEARLITES':'COINS')+'</small><b id="ccount" class="'+(lastCoinsBefore!=null&&lastCoinsBefore!==(S.keep?S.bank:S.coins)?'pop':'')+'">'+(S.keep?liteI+S.bank:coinI+S.coins)+'</b></div>':'')+'</div>'+
         (full ? '<div class="hdim" aria-hidden="true"></div><div class="holdfloat center"><span class="hswirl" aria-hidden="true"></span><span class="hswirl b" aria-hidden="true"></span><span class="hrays" aria-hidden="true">'+rayField(24, 84, 150)+'</span>'+holdBtn('HOLD','TO LOCK IN','lock')+'<button class="notyet sm" data-act="holdMin" aria-label="Not ready yet">NOT YET</button></div>' : '')+
       '<div class="slots" role="group" aria-label="Lineup slots">'+tabs+'</div>'+
       '<div class="spot" id="spot">'+spot+'</div>'+
@@ -6238,7 +6397,7 @@ function renderDraft(){
     return;
   }
   $app.innerHTML = top()+
-    '<div class="dtop"><div class="dhead"><div class="dleft"><span class="kicker">'+esc(stageName(S.round))+' · Week '+S.week+', '+S.season+'</span>'+
+    '<div class="dtop"><div class="dhead"><div class="dleft"><span class="kicker">'+esc(stageName(S.round))+' · '+wkLbl()+'</span>'+
       '<h1 class="mega" style="font-size:44px;margin-top:6px">DRAFT '+slot+'</h1>'+
       (S.salaries?'<div class="bar gold" style="margin-top:8px"><div><small>SCORE TO BEAT</small><b>'+f1(S.target)+'</b></div></div>':'')+'</div>'+
       (S.salaries
@@ -6313,17 +6472,19 @@ function finalizeGame(){
   x.score = kept.reduce((a,r)=>a+r.t,0);
   x.pct = x.best>0 ? Math.min(1, x.score/x.best) : 0;
   x.soldCoins = sold.reduce((a,r)=>a+r.o.cost,0);
-  x.leftover = S.salaries ? S.coins : 0;
+  x.leftover = (S.salaries && !S.keep) ? S.coins : 0;
   const st = stageOf(S.round), over = Math.max(0, x.score/S.target - 1);
   x.earn = [
     ['Performance · '+Math.round(x.pct*100)+'% of best', Math.round(x.pct*8)],
-    ['Win bonus', x.win ? (st==='sb'?12:st==='po'?6:4) : 0],
+    ['Win bonus', x.win ? Math.round((st==='sb'?12:st==='po'?6:4)*(S.keep?Math.pow(KEEP.growth,S.round):1)) : 0],   // roster mode: wins pay more as prices rise
     ['Overdrive', x.win ? Math.min(8, Math.floor(over*100/20)) : 0],
     ['Coins cashed in · '+(x.leftover+x.soldCoins), (x.leftover+x.soldCoins)],
-    ['Booster abilities', x.win ? staffSum('lites') : 0]
+    ['Booster abilities', x.win ? staffSum('lites') : 0],
+    ['Interest on pearlites', S.keep ? Math.min(5, Math.floor(S.bank/10)) : 0]
   ].filter(e=>e[1]>0);
   x.earnTotal = x.earn.reduce((a,e)=>a+e[1],0); x.payout = x.earnTotal; x.pearls = 0;
   S.bank += x.earnTotal;
+  if(S.keep) keepAfterGame();
   x.growth = [];
   if(x.win) S.coaches.forEach(i => { const g = metaOf(i).ab.reduce((a,id)=>a+(AB[id].grow||0),0); if(g){ S.meta[i].grow += g; x.growth.push({name:coachObj(i).name, g}); } });
   S.history[S.round] = {season:S.season, week:S.week, stage:stageName(S.round), target:S.target, score:x.score, win:x.win,
@@ -6467,10 +6628,11 @@ function renderSheet(){
   let body = '';
   if(sheetTab==='players'){
     const curPicks = S.phase!=='end' && !S.history[S.round] ? S.picks.map((o,i)=>o?'<div class="row"><span><b>'+S.slotList[i]+'</b> '+esc(o.n)+'</span><span class="copy" style="font-size:13px">'+matchup(o)+'</span></div>':'').join('') : '';
+    body += keepRosterHtml();
     body += curPicks ? lc('<div class="kicker">This game, points hidden until the reveal</div>'+curPicks) : '';
     const games = S.history.map((h,r)=>({h,r})).filter(x=>x.h).reverse();
     if(!games.length && !curPicks) body += '<p class="copy">Your drafted players and who you could have taken will show up here after each game.</p>';
-    body += games.map(({h,r})=>'<details class="gm"'+(r===S.round?' open':'')+'><summary><span>'+esc(stageShort(r))+' · Week '+h.week+', '+h.season+'</span><span class="num" style="color:'+(h.win?'var(--c1)':'var(--c2)')+'">'+(h.win?'W':'L')+' '+f1(h.score)+'</span></summary>'+
+    body += games.map(({h,r})=>'<details class="gm"'+(r===S.round?' open':'')+'><summary><span>'+esc(stageShort(r))+' · Week '+h.week+(S.keep?'':', '+h.season)+'</span><span class="num" style="color:'+(h.win?'var(--c1)':'var(--c2)')+'">'+(h.win?'W':'L')+' '+f1(h.score)+'</span></summary>'+
       h.slots.map(s=>'<div style="margin-top:8px"><div class="row"><span><b>'+s.slot+'</b> '+esc(s.pick.n)+(S.salaries&&s.pick.cost!=null?' <span class="num" style="font-size:13px">'+coinI+s.pick.cost+'</span>':'')+'</span><span class="num">'+(s.sold?'sold · would have scored '+f1(s.pick.p):f1(s.pick.p)+' × '+f2(s.m))+'</span></div>'+
         s.alts.map((a,k)=>'<div class="alt'+(a.mine?' mine':k===0?' best':'')+'"><span>'+(k===0?'Top: ':'')+esc(a.n)+(s.slot==='FLEX'?' ('+a.pos+')':'')+'</span><span>'+(S.salaries?'<span style="margin-right:10px">'+coinI+a.cost+'</span>':'')+f1(a.p)+'</span></div>').join('')+'</div>').join('')+
       '</details>').join('');
@@ -6489,7 +6651,7 @@ function renderSheet(){
       '<div class="row"><span>Games left (max)</span><span class="num">'+left+'</span></div>'+
       '<div class="row"><span>Seed</span><span class="num">'+esc(S.seed)+'</span></div>')+
       '<div class="kicker">Every game</div>'+schedHTML(S.phase==='end'?-1:S.round)+
-      S.history.map((h,r)=>h?'<div class="row" style="font-size:14px"><span>'+esc(stageShort(r))+' · Week '+h.week+', '+h.season+'</span><span class="num">'+f1(h.score)+' / '+f1(h.target)+' '+(h.win?'W':'L')+'</span></div>':'').join('');
+      S.history.map((h,r)=>h?'<div class="row" style="font-size:14px"><span>'+esc(stageShort(r))+' · Week '+h.week+(S.keep?'':', '+h.season)+'</span><span class="num">'+f1(h.score)+' / '+f1(h.target)+' '+(h.win?'W':'L')+'</span></div>':'').join('');
   }
   $sheetBody.innerHTML = '<div class="row"><h2 class="h2">MY TEAM</h2><button class="pill btn" data-close><span>Close</span></button></div><div class="tabs" role="tablist">'+tabs+'</div>'+body;
 }
@@ -6872,7 +7034,10 @@ $app.addEventListener('click', e => {
     case 'spot': spotTap(+arg); break;
     case 'scout': scoutSlot(btn); break;
     case 'bust': if(S.bustUsed<S.busts && !S.busted[S.active]){ S.bustUsed++; S.busted[S.active]=true; sfx.zap(3); render(); } break;
-    case 'lock': sceneWipe(()=>{ S.phase='shop'; dealPacks(); render(); }); break;
+    case 'lock': sceneWipe(()=>{ if(S.keep) keepCommit(); S.phase='shop'; dealPacks(); render(); }); break;
+    case 'bench': keepBench(+arg); break;
+    case 'release': keepRelease(+arg); break;
+    case 'lowball': keepLowball(+arg); break;
     case 'openPack': openPack(+arg); break;
     case 'viewPack': S.shop.view=+arg; renderShop(); break;
     case 'flip': flipCard(arg, !S.shop.flip[arg]); break;
