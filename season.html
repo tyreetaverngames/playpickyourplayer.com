@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b0f1e">
+<title>Pick Your Player – Season Mode (prototype)</title>
+<link rel="icon" href="/favicon.svg">
+<style>
+:root{--bg:#0b0f1e;--card:#151b33;--line:rgba(255,255,255,.09);--ink:#eef2ff;--dim:#8b95b8;--gold:#ffd166;--pearl:#9be7ff;--good:#3ddc97;--bad:#ff5d73;--accent:#7c5cff}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{background:#0b0f1e}
+body{margin:0;background:radial-gradient(120% 70% at 50% 0%,#1d2550 0%,var(--bg) 60%) fixed;color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;min-height:100vh}
+#app{max-width:480px;margin:0 auto;padding:max(14px,env(safe-area-inset-top)) 14px max(90px,env(safe-area-inset-bottom))}
+h1{font-size:30px;letter-spacing:.06em;margin:10px 0 4px;background:linear-gradient(90deg,var(--gold),#fff,var(--pearl));-webkit-background-clip:text;background-clip:text;color:transparent}
+h2{font-size:18px;margin:8px 0}
+.dim{color:var(--dim)} .small{font-size:12px}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 12px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.04);margin-bottom:12px;font-size:14px;position:sticky;top:6px;z-index:5;backdrop-filter:blur(8px)}
+.pl{color:var(--pearl);font-weight:800}
+.card{display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:14px;background:var(--card);border:1px solid var(--line);margin:7px 0;position:relative}
+.card.sel{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold) inset}
+.card.mine{border-color:rgba(155,231,255,.5)}
+.card.bench{opacity:.55}
+.card.out{border-color:rgba(255,93,115,.6)}
+.pos{font-weight:800;font-size:12px;width:38px;text-align:center;padding:5px 0;border-radius:8px;background:rgba(124,92,255,.25)}
+.pos.QB{background:rgba(255,93,115,.25)} .pos.RB{background:rgba(61,220,151,.22)} .pos.WR{background:rgba(124,92,255,.28)} .pos.TE{background:rgba(255,209,102,.22)}
+.who{flex:1;min-width:0} .who b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.who span{font-size:12px;color:var(--dim)}
+.price{font-weight:800;color:var(--pearl);white-space:nowrap}
+.tag{font-size:11px;font-weight:800;padding:3px 7px;border-radius:999px;background:rgba(255,93,115,.2);color:var(--bad)}
+.tag.on{background:rgba(61,220,151,.18);color:var(--good)}
+.btn{display:block;width:100%;border:0;border-radius:14px;padding:15px;font-size:17px;font-weight:800;background:linear-gradient(90deg,var(--accent),#9f7bff);color:#fff;margin-top:12px}
+.btn.alt{background:rgba(255,255,255,.08)} .btn:disabled{opacity:.4}
+.row{display:flex;gap:8px} .row .btn{margin-top:8px}
+.mini{border:0;border-radius:10px;padding:7px 10px;font-size:12px;font-weight:700;background:rgba(255,255,255,.08);color:var(--ink)}
+.hist{font-size:11px;color:var(--dim);margin-top:3px;letter-spacing:.02em}
+.big{font-size:52px;font-weight:900;margin:6px 0}
+.wrench{border:1px solid rgba(255,209,102,.5);background:rgba(255,209,102,.08);border-radius:14px;padding:12px;margin:10px 0;font-size:14px}
+.pts{font-weight:900;font-size:18px;min-width:44px;text-align:right}
+.hearts{letter-spacing:2px}
+.note{font-size:12px;color:var(--dim);line-height:1.5;margin-top:14px}
+.tabs{display:flex;gap:6px;margin:8px 0;flex-wrap:wrap} .tabs button{flex:1}
+.tabs button.sel{background:var(--accent)}
+</style>
+</head>
+<body>
+<div id="app"><h1>PICK YOUR PLAYER</h1><p class="dim">Loading every NFL week from 1999 to 2024…</p></div>
+<script>
+/* ═══════════════════════════════════════════════════════════════════
+   SEASON MODE — prototype of the roster redesign (docs: "Pick Your Player: Roster Redesign")
+   - Draft 5 in week 1, 5 more in week 2: a roster of 10, start 7.
+   - Every card = a player + a season. In run week N he plays his real week (start+N-1)
+     of that season; past the season's end it loops to the next season, then back to his first.
+   - You know ahead of time when someone is OUT (no game that week = injured / bye / IR).
+   - No salary cap: players cost pearlites, priced by how good their SEASON was, and prices
+     scale up every week. Swapping is free; buying costs pearlites. Drop up to 5 a week.
+   - Beat the week's target score. Regular season: 3 strikes. Playoffs + Super Bowl are boss
+     weeks with a wrench, single elimination.
+   Data: the game's own dataset, read from index.html at load (same site).
+   ═══════════════════════════════════════════════════════════════════ */
+const CFG = {                       // every knob lives here (presets will set these)
+  reg: 6, po: 2,                    // regular-season weeks, playoff games (+ Super Bowl)
+  startPearlites: 16,
+  basePriceMax: 5,                  // the best player costs this in week 1…
+  priceGrowth: 1.3,                 // …times this every week after
+  lineup: ['QB','RB','RB','WR','WR','TE','FLEX'],
+  week1: ['QB','RB','WR','TE','FLEX'],     // what you draft in week 1 (all start)
+  week2: ['QB','RB','WR','TE','FLEX'],     // what you add in week 2
+  maxRoster: 10, maxDrops: 5, strikes: 3,
+  marketPerPos: 5,                  // offers shown per position in the market
+  targets: [38, 50, 54, 58, 62, 66],   // regular-season targets by week (a no-upgrade lineup averages ~55)
+  poTargets: [72, 78], sbTarget: 85,
+};
+const POS = ['QB','RB','WR','TE'];
+const FLEX = ['RB','WR','TE'];
+let D, SEASONS, PROFILE = new Map(), POOL = {}, S;
+
+/* ---------- data ---------- */
+async function loadData(){
+  const html = await (await fetch('index.html')).text();
+  const m = html.match(/<script[^>]*id="gd"[^>]*>([\s\S]*?)<\/script>/);
+  D = JSON.parse(m[1]);
+  // per player-season: weekly points (null = no game)
+  for(const key of Object.keys(D.weeks)){
+    const [yr, wk] = key.split('-').map(Number);
+    for(const pos of POS){
+      for(const e of (D.weeks[key][pos]||[])){
+        const id = yr+'|'+e[0]+'|'+pos;
+        let p = PROFILE.get(id);
+        if(!p){ p = {id, yr, pos, n:D.names[e[0]], nameIdx:e[0], wk:{}, team:D.teams[e[1]]}; PROFILE.set(id, p); }
+        p.wk[wk] = {pts: e[3]/10, team:D.teams[e[1]], opp:D.teams[e[2]], home:e[5]};
+      }
+    }
+  }
+  SEASONS = [...new Set([...PROFILE.values()].map(p=>p.yr))].sort();
+  for(const p of PROFILE.values()){
+    const v = Object.values(p.wk).map(x=>x.pts);
+    p.games = v.length; p.avg = v.reduce((a,b)=>a+b,0)/Math.max(1,v.length);
+    p.maxWk = Math.max(...Object.keys(p.wk).map(Number));
+  }
+  // drafting pool: real contributors only (8+ games), ranked per position for pricing
+  for(const pos of POS){
+    POOL[pos] = [...PROFILE.values()].filter(p=>p.pos===pos && p.games>=8).sort((a,b)=>a.avg-b.avg);
+    POOL[pos].forEach((p,i)=>{ p.pct = i/(POOL[pos].length-1); });
+  }
+}
+// all seasons a player has at this position, in order (for looping)
+function careerOf(p){ return SEASONS.map(y=>PROFILE.get(y+'|'+p.nameIdx+'|'+p.pos)).filter(Boolean); }
+// which real game a card plays in run week r (0-based)
+function gameFor(card, r){
+  let seasons = card.career, si = seasons.indexOf(card.prof), w = card.startWk + r;
+  let prof = card.prof;
+  while(w > (prof.maxWk||17)){ w -= (prof.maxWk||17); si = (si+1) % seasons.length; prof = seasons[si]; }
+  const g = prof.wk[w];
+  return {yr:prof.yr, wk:w, g};          // g undefined → OUT that week
+}
+
+/* ---------- rng (seeded) ---------- */
+function mulberry(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+function hashStr(s){ let h=2166136261; for(const c of s){ h^=c.charCodeAt(0); h=Math.imul(h,16777619); } return h>>>0; }
+let rng = Math.random;
+const pick = a => a[Math.floor(rng()*a.length)];
+
+/* ---------- run ---------- */
+const priceOf = (p, r) => Math.max(1, Math.round((1 + (CFG.basePriceMax-1)*Math.pow(p.pct,1.6)) * Math.pow(CFG.priceGrowth, r)));
+function makeCard(p){
+  // you join his season at a random point that still leaves games to play
+  const startWk = 1 + Math.floor(rng()*Math.max(1,(p.maxWk||17)-4));
+  return {prof:p, career:careerOf(p), startWk, start:true, uid:Math.random().toString(36).slice(2)};
+}
+function offers(pos, n){
+  const pool = pos==='FLEX' ? FLEX.flatMap(x=>POOL[x]) : POOL[pos];
+  const out=[], seen=new Set(S.roster.map(c=>c.prof.nameIdx));
+  // a spread: mostly mid-tier, one strong, one cheap
+  let guard=0;
+  while(out.length<n && guard++<500){
+    const band = out.length===0 ? [0.85,1] : out.length===1 ? [0,0.4] : [0.3,0.95];
+    const cand = pool.filter(p=>p.pct>=band[0] && p.pct<=band[1]);
+    const p = pick(cand); if(!p || seen.has(p.nameIdx)) continue;
+    seen.add(p.nameIdx); out.push(p);
+  }
+  return out.sort((a,b)=>b.pct-a.pct).map(makeCard);
+}
+function newRun(){
+  const seed = Math.random().toString(36).slice(2,8).toUpperCase();
+  rng = mulberry(hashStr(seed));
+  S = {seed, r:0, pearlites:CFG.startPearlites, roster:[], strikes:0, wins:0, log:[], drops:0, phase:'draft', draftQueue:CFG.week1.slice(), wrench:null};
+  nextDraftSlot();
+}
+const total = () => CFG.reg + CFG.po + 1;
+const stage = r => r < CFG.reg ? 'reg' : r < CFG.reg+CFG.po ? 'po' : 'sb';
+const stageName = r => stage(r)==='reg' ? 'Week '+(r+1) : stage(r)==='po' ? ['Divisional round','Conference championship','Wild card'][CFG.po-1-(r-CFG.reg)] || 'Playoffs' : 'Super Bowl';
+const target = r => stage(r)==='reg' ? CFG.targets[Math.min(r,CFG.targets.length-1)] : stage(r)==='po' ? CFG.poTargets[r-CFG.reg] : CFG.sbTarget;
+
+function nextDraftSlot(){
+  if(!S.draftQueue.length){ S.phase='lineup'; return render(); }
+  const pos = S.draftQueue[0];
+  S.offer = {pos, cards:offers(pos, 5)};
+  S.phase='draft'; render();
+}
+function draftPick(i){
+  const c = S.offer.cards[i], cost = priceOf(c.prof, S.r);
+  if(cost > S.pearlites) return;
+  S.pearlites -= cost; c.cost = cost; S.roster.push(c); S.draftQueue.shift();
+  autoLineup(); nextDraftSlot();
+}
+function draftSkip(){ S.draftQueue.shift(); nextDraftSlot(); }
+
+/* lineup: which of your players fill the starting slots this week */
+function slotsNow(){ return S.r===0 ? CFG.week1 : CFG.lineup; }
+function fits(slot, pos){ return slot===pos || (slot==='FLEX' && FLEX.includes(pos)); }
+function starters(){ return S.roster.filter(c=>c.start); }
+function lineupValid(){
+  // greedy match starters to slots
+  const sl = slotsNow().slice(), st = starters();
+  if(st.length > sl.length) return false;
+  const order = st.slice().sort((a,b)=>(a.prof.pos==='QB'?0:1)-(b.prof.pos==='QB'?0:1));
+  for(const c of order){ let k = sl.indexOf(c.prof.pos); if(k<0) k = sl.findIndex(s=>fits(s,c.prof.pos)); if(k<0) return false; sl.splice(k,1); }
+  return true;
+}
+function isOut(c){ return !gameFor(c, S.r).g || (S.wrench && S.wrench.out===c.uid); }
+function autoLineup(){
+  // start the best available players that fit; sit the rest
+  S.roster.forEach(c=>c.start=false);
+  const sl = slotsNow().slice();
+  const order = S.roster.slice().sort((a,b)=>b.prof.avg-a.prof.avg);
+  for(const pass of [0,1]) for(const c of order){
+    if(c.start || isOut(c)) continue;
+    let k = pass===0 ? sl.indexOf(c.prof.pos) : sl.findIndex(s=>fits(s,c.prof.pos));
+    if(k>=0){ c.start=true; sl.splice(k,1); }
+  }
+}
+function toggleStart(uid){
+  const c = S.roster.find(x=>x.uid===uid); c.start = !c.start;
+  if(c.start && !lineupValid()){ c.start=false; flash('No open slot for a '+c.prof.pos+'. Sit someone first.'); }
+  render();
+}
+function drop(uid){
+  if(S.drops >= CFG.maxDrops) return flash('You can drop up to '+CFG.maxDrops+' players a week.');
+  S.roster = S.roster.filter(c=>c.uid!==uid); S.drops++; render();
+}
+function openMarket(pos){ S.market = {pos, cards:offers(pos, CFG.marketPerPos)}; S.phase='market'; render(); }
+function buy(i){
+  const c = S.market.cards[i], cost = priceOf(c.prof, S.r);
+  if(cost > S.pearlites) return flash('Not enough pearlites.');
+  if(S.roster.length >= CFG.maxRoster) return flash('Roster is full ('+CFG.maxRoster+'). Drop someone first.');
+  S.pearlites -= cost; c.cost=cost; c.start=false; S.roster.push(c); S.phase='lineup'; render();
+}
+
+/* boss weeks: a wrench before every playoff game and the Super Bowl */
+function rollWrench(){
+  if(stage(S.r)==='reg'){ S.wrench=null; return; }
+  const top = S.roster.filter(c=>gameFor(c,S.r).g).sort((a,b)=>b.prof.avg-a.prof.avg)[0];
+  const opts = [
+    top && {txt:'Injury report: '+top.prof.n+' is OUT this week.', out:top.uid},
+    {txt:'Rain game: WRs score half this week.', half:'WR'},
+    {txt:'Short week: the target is 15% higher.', tgt:1.15},
+    {txt:'Gameplanned: your highest scorer this week counts zero.', zeroTop:true},
+  ].filter(Boolean);
+  S.wrench = pick(opts);
+}
+
+function kickoff(){
+  if(!lineupValid() || starters().length===0) return;
+  const rows = starters().map(c=>{
+    const gm = gameFor(c, S.r); let pts = isOut(c) ? 0 : gm.g.pts;
+    if(S.wrench && S.wrench.half===c.prof.pos) pts/=2;
+    return {c, gm, pts:Math.round(pts*10)/10};
+  });
+  if(S.wrench && S.wrench.zeroTop){ const t = rows.reduce((a,b)=>b.pts>a.pts?b:a, rows[0]); if(t){ t.zeroed=true; t.pts=0; } }
+  const score = Math.round(rows.reduce((a,b)=>a+b.pts,0)*10)/10;
+  const tgt = Math.round(target(S.r)*((S.wrench&&S.wrench.tgt)||1));
+  const win = score >= tgt;
+  // every rostered player's game becomes history you can see next week
+  for(const c of S.roster){ const gm=gameFor(c,S.r); (c.hist=c.hist||[]).push(gm.g ? gm.g.pts : null); }
+  const earn = win ? 6 + Math.floor((score-tgt)/6) : 3;
+  S.pearlites += earn;
+  S.result = {rows, score, tgt, win, earn};
+  if(win) S.wins++; else if(stage(S.r)==='reg') S.strikes++;
+  S.phase='result'; render();
+}
+function nextWeek(){
+  const res = S.result;
+  const over = (!res.win && stage(S.r)!=='reg') || S.strikes>=CFG.strikes || S.r===total()-1;
+  if(over){ S.phase='end'; return render(); }
+  S.r++; S.drops=0; S.wrench=null; rollWrench();
+  if(S.r===1){ S.draftQueue = CFG.week2.slice(); autoLineup(); return nextDraftSlot(); }
+  autoLineup(); S.phase='lineup'; render();
+}
+
+/* ---------- views ---------- */
+const $app = document.getElementById('app');
+let flashMsg = '';
+function flash(t){ flashMsg=t; render(); setTimeout(()=>{ flashMsg=''; render(); }, 1800); }
+function head(){
+  const hearts = '♥'.repeat(CFG.strikes-S.strikes)+'♡'.repeat(S.strikes);
+  return `<div class="bar"><span><b>${stageName(S.r)}</b> <span class="dim">· target ${Math.round(target(S.r)*((S.wrench&&S.wrench.tgt)||1))}</span></span><span class="hearts" title="strikes left">${stage(S.r)==='reg'?hearts:'🏆'}</span><span class="pl">◆ ${S.pearlites}</span></div>`
+    + (flashMsg?`<div class="wrench">${flashMsg}</div>`:'');
+}
+function cardHTML(c, opt={}){
+  const p=c.prof, gm=gameFor(c, S.r), out=isOut(c);
+  const hist = (c.hist||[]).map(x=>x==null?'–':x.toFixed(0)).join(' · ');
+  return `<div class="card ${opt.cls||''} ${out&&opt.mine?'out':''} ${opt.mine&&!c.start?'bench':''}" ${opt.on?`onclick="${opt.on}"`:''}>
+    <div class="pos ${p.pos}">${p.pos}</div>
+    <div class="who"><b>${p.n}</b><span>${gm.yr} ${gm.g?gm.g.team+' '+(gm.g.home?'vs':'@')+' '+gm.g.opp:'—'} · wk ${gm.wk} · ${p.yr} avg ${p.avg.toFixed(1)}</span>
+      ${hist?`<div class="hist">This run: ${hist}</div>`:''}</div>
+    ${opt.right||''}
+  </div>`;
+}
+function render(){
+  if(!S) return home();
+  if(S.phase==='draft'){
+    const o=S.offer;
+    $app.innerHTML = head()+`<h2>Draft your ${o.pos==='FLEX'?'FLEX (RB/WR/TE)':o.pos}</h2>
+      <div class="dim small">Pick one. Price = how good his season was. ${S.r===0?'Week 1 roster: 5 players, all start.':'Week 2: add 5 more. You start 7.'}</div>
+      ${o.cards.map((c,i)=>cardHTML(c,{on:`draftPick(${i})`,right:`<span class="price">◆ ${priceOf(c.prof,S.r)}</span>`, cls: priceOf(c.prof,S.r)>S.pearlites?'bench':''})).join('')}
+      <button class="btn alt" onclick="draftSkip()">Skip this slot</button>`;
+  } else if(S.phase==='lineup'){
+    const st=starters().length, need=slotsNow().length;
+    $app.innerHTML = head()
+      + (S.wrench?`<div class="wrench"><b>Boss week.</b> ${S.wrench.txt}</div>`:'')
+      + `<h2>Set your lineup <span class="dim small">${st}/${need} starters · ${slotsNow().join(' ')}</span></h2>
+      <div class="dim small">Tap a player to start or sit him. Players marked OUT have no game this week (injury, IR or bye).</div>
+      ${S.roster.slice().sort((a,b)=>(b.start-a.start)||POS.indexOf(a.prof.pos)-POS.indexOf(b.prof.pos)).map(c=>cardHTML(c,{mine:true,on:`toggleStart('${c.uid}')`,
+        right:`<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">${isOut(c)?'<span class="tag">OUT</span>':c.start?'<span class="tag on">START</span>':'<span class="tag" style="background:rgba(255,255,255,.08);color:var(--dim)">BENCH</span>'}<button class="mini" onclick="event.stopPropagation();drop('${c.uid}')">Drop</button></div>`})).join('')}
+      <div class="dim small" style="margin-top:12px">Market: buy a player (${S.roster.length}/${CFG.maxRoster} on roster, ${CFG.maxDrops-S.drops} drops left)</div>
+      <div class="tabs">${['QB','RB','WR','TE'].map(p=>`<button class="mini" onclick="openMarket('${p}')">+ ${p}</button>`).join('')}</div>
+      <button class="btn" onclick="kickoff()" ${lineupValid()&&st>0?'':'disabled'}>Kick off · ${stageName(S.r)}</button>`;
+  } else if(S.phase==='market'){
+    const m=S.market;
+    $app.innerHTML = head()+`<h2>Market · ${m.pos}</h2><div class="dim small">Prices go up every week. Buying adds him to your bench.</div>
+      ${m.cards.map((c,i)=>cardHTML(c,{on:`buy(${i})`,right:`<span class="price">◆ ${priceOf(c.prof,S.r)}</span>`, cls: priceOf(c.prof,S.r)>S.pearlites?'bench':''})).join('')}
+      <button class="btn alt" onclick="S.phase='lineup';render()">Back to lineup</button>`;
+  } else if(S.phase==='result'){
+    const R=S.result;
+    $app.innerHTML = head()+`<div style="text-align:center"><div class="dim">${stageName(S.r)}</div>
+      <div class="big" style="color:${R.win?'var(--good)':'var(--bad)'}">${R.score}</div>
+      <div class="dim">target ${R.tgt} · ${R.win?'WIN':'LOSS'} · <span class="pl">+◆ ${R.earn}</span></div></div>
+      ${R.rows.sort((a,b)=>b.pts-a.pts).map(x=>cardHTML(x.c,{right:`<span class="pts" style="color:${x.zeroed||!x.gm.g?'var(--bad)':'var(--ink)'}">${x.zeroed?'0*':x.gm.g?x.pts:'OUT'}</span>`})).join('')}
+      <button class="btn" onclick="nextWeek()">${(!R.win&&stage(S.r)!=='reg')||S.strikes>=CFG.strikes||S.r===total()-1?'See your season':'Next week'}</button>`;
+  } else if(S.phase==='end'){
+    const champ = S.r===total()-1 && S.result.win;
+    $app.innerHTML = `<h1>${champ?'CHAMPIONS':'SEASON OVER'}</h1>
+      <div class="dim">${S.wins} wins · reached ${stageName(S.r)} · seed ${S.seed}</div>
+      <h2 style="margin-top:18px">Your roster</h2>
+      ${S.roster.slice().sort((a,b)=>sum(b.hist)-sum(a.hist)).map(c=>cardHTML(c,{right:`<span class="pts">${sum(c.hist).toFixed(0)}</span>`})).join('')}
+      <button class="btn" onclick="newRun()">New run</button>`;
+  }
+}
+const sum = a => (a||[]).reduce((x,y)=>x+(y||0),0);
+function home(){
+  $app.innerHTML = `<h1>PICK YOUR PLAYER</h1><div class="dim">Season mode · prototype</div>
+    <div class="note" style="font-size:14px;color:var(--ink)">Draft real players from 1999–2024 and keep them all season. Each player plays his real games from his season, week by week. Start and sit, swap through the market, and beat each week's target. Playoffs and the Super Bowl throw a wrench at you.</div>
+    <button class="btn" onclick="newRun()">Start a season</button>
+    <div class="note">Prototype: no coaches, trivia or presets yet. ${CFG.reg} weeks, ${CFG.po} playoff games, the Super Bowl. You start with ◆ ${CFG.startPearlites} pearlites.</div>`;
+}
+loadData().then(()=>{ home(); }).catch(e=>{ $app.innerHTML='<h1>PICK YOUR PLAYER</h1><p>Could not load the game data: '+e+'</p>'; });
+</script>
+</body>
+</html>
